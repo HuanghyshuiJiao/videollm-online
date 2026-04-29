@@ -23,6 +23,8 @@ class LiveMixin(AutoModelForCausalLM):
             with torch.cuda.amp.autocast():
                 frames = self.vision_encode(self.vision_encoder, frames)
             frames = frames.to(self.dtype)
+        else:
+            frames = frames.to(dtype=self.dtype)
         frames = self.connector(frames)
         return frames.view(-1, frames.shape[-1])
 
@@ -38,7 +40,7 @@ class LiveMixin(AutoModelForCausalLM):
         inputs_embeds = self.get_input_embeddings()(input_ids.clamp(max=self.vocab_size-1))
         v_mask = input_ids == self.config.v_placeholder_id
         if v_mask.any():
-            inputs_embeds[v_mask] = self.visual_embed(frames)
+            inputs_embeds[v_mask] = self.visual_embed(frames).to(dtype=inputs_embeds.dtype)
         return inputs_embeds
 
     @torch.no_grad()

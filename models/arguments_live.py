@@ -11,7 +11,7 @@ class LiveTrainingArguments(TrainingArguments):
     train_datasets: list[str] = None
     eval_datasets: list[str] = None
     stream_loss_weight: float = 1.0
-    llm_pretrained: str = 'meta-llama/Meta-Llama-3-8B-Instruct'
+    llm_pretrained: str = 'TinyLlama/TinyLlama-1.1B-Chat-v1.0'
     vision_pretrained: str = 'google/siglip-large-patch16-384'
     lora_modules: str = "model.*(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)|lm_head$"
     lora_r: int = 128
@@ -24,7 +24,7 @@ class LiveTrainingArguments(TrainingArguments):
     frame_token_interval: str  = None
     frame_token_interval_threshold: float = 0.0
     augmentation: bool = False
-    attn_implementation: str = 'flash_attention_2'
+    attn_implementation: str = 'sdpa'
     output_dir: str = 'outputs/debug'
 
 @dataclass

@@ -4,6 +4,8 @@ from .stream import StreamMixIn
 class Robustness(StreamMixIn):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        frame_num_tokens = kwargs.get('frame_num_tokens', 1)
+        vision_hidden_size = kwargs.get('vision_hidden_size', 1024)
         self.annos = [ 
             {
                 'conversation': [
@@ -32,7 +34,7 @@ class Robustness(StreamMixIn):
                     {"role": "user", 'content': 'What is happening now?', 'learn': False},
                     {"role": "assistant", 'content': 'Sorry, it seems the input video frames are noise. Could you have a check?', 'learn': True},
                 ],
-                'load_ranges': torch.rand(1, 1024),
+                'load_ranges': torch.rand(10, frame_num_tokens, vision_hidden_size),
             },
             {
                 'conversation': [
@@ -40,7 +42,7 @@ class Robustness(StreamMixIn):
                     {"role": "user", 'content': 'What is the next step?', 'learn': False},
                     {"role": "assistant", 'content': 'Sorry, I cannot see anything in the input video frame. Could you check it?', 'learn': True},
                 ],
-                'load_ranges': torch.zeros(1, 1024),
+                'load_ranges': torch.zeros(1, frame_num_tokens, vision_hidden_size),
             },
         ]
 

@@ -1,0 +1,88 @@
+import argparse
+import os
+import sys
+from pathlib import Path
+
+import torch
+import torch.nn.functional as F
+import torchvision
+import transformers
+from dataclasses import asdict
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from models.arguments_live import LiveOnePlusTrainingArguments
+from models.configuration_live import LiveConfigMixin
+from models.vision_live import build_live_vision
+
+
+def resize_and_pad(frames: torch.Tensor, resolution: int) -> torch.Tensor:
+    frames = frames.float()
+    _, _, height, width = frames.shape
+    if width >= height:
+        new_width = resolution
+        new_height = max(1, round(height * resolution / width))
+    else:
+        new_height = resolution
+        new_width = max(1, round(width * resolution / height))
+    frames = F.interpolate(frames, size=(new_height, new_width), mode="bicubic", align_corners=False)
+    pad_left = (resolution - new_width) // 2
+    pad_right = resolution - new_width - pad_left
+    pad_top = (resolution - new_height) // 2
+    pad_bottom = resolution - new_height - pad_top
+    return F.pad(frames, (pad_left, pad_right, pad_top, pad_bottom))
+
+
+def sample_video(path: str, fps: int, resolution: int, max_frames: int) -> torch.Tensor:
+    reader = torchvision.io.VideoReader(path, "video")
+    frames = []
+    next_time = 0.0
+    for frame in reader:
+        if frame["pts"] + 1e-6 < next_time:
+            continue
+        frames.append(frame["data"])
+        next_time += 1 / fps
+        if len(frames) >= max_frames:
+            break
+    if not frames:
+        raise RuntimeError(f"No frames read from {path}")
+    while len(frames) < max_frames:
+        frames.append(frames[-1].clone())
+    return resize_and_pad(torch.stack(frames[:max_frames]), resolution)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--video_dir", default="demo/assets")
+    parser.add_argument("--output_dir", default="outputs/demo_overfit/features")
+    parser.add_argument("--fps", type=int, default=2)
+    parser.add_argument("--resolution", type=int, default=384)
+    parser.add_argument("--max_frames", type=int, default=8)
+    parser.add_argument("--batch_size", type=int, default=1)
+    parser.add_argument("--feature_mode", choices=["siglip"], default="siglip")
+    parser.add_argument("--vision_pretrained", default="google/siglip-large-patch16-384")
+    parser.add_argument("--device", default="cuda")
+    args = parser.parse_args()
+
+    os.makedirs(args.output_dir, exist_ok=True)
+    live_args = LiveOnePlusTrainingArguments(vision_pretrained=args.vision_pretrained)
+    config = LiveConfigMixin(**asdict(live_args))
+    vision_model, vision_encode = build_live_vision(config)
+    vision_model.to(args.device).eval()
+
+    for name in ("cooking.mp4", "bicycle.mp4"):
+        video_path = os.path.join(args.video_dir, name)
+        frames = sample_video(video_path, args.fps, args.resolution, args.max_frames)
+        embeds = []
+        with torch.inference_mode(), torch.cuda.amp.autocast(enabled=args.device.startswith("cuda")):
+            for batch in frames.split(args.batch_size):
+                embeds.append(vision_encode(vision_model, batch.to(args.device)).cpu())
+        embeds = torch.cat(embeds)
+        save_path = os.path.join(args.output_dir, os.path.splitext(name)[0] + ".pt")
+        torch.save(embeds.to(torch.bfloat16), save_path)
+        print(f"{video_path} -> {save_path}")
+
+
+if __name__ == "__main__":
+    transformers.logging.set_verbosity_error()
+    main()

@@ -13,9 +13,15 @@ class Ego4DNarrationStream(Ego4D, StreamMixIn):
     instructions = [{"role": "user", "content": "Please concisely narrate the video in real time. Use the tag 'C' to denote the camera wearer, and other letter tags, such as 'X', to denote other individuals in the scene."}]
     evaluation_kwargs = DictWithTo(evaluator='stream_evaluate')
 
-    def get_annos(self, split: str) -> dict[str, dict[str, list]]:
+    def get_annos(self, split: str, video_uids: set[str] = None) -> dict[str, dict[str, list]]:
         annos = json.load(open(os.path.join(Ego4D.anno_root, 'all_narrations_redacted.json')))['videos']
         assert split in ['train', 'val', 'test']
+        if video_uids is not None:
+            return self._build_narration_streams(
+                annos=annos,
+                video_uids=video_uids,
+                desc=f'narration_stream_{split}_subset...',
+            )
         anno_path = os.path.join(Ego4D.anno_root, f'narration_stream_video_uids_{split}.json')
         if os.path.exists(anno_path):
             split_video_uids = json.load(open(anno_path))
@@ -39,37 +45,60 @@ class Ego4DNarrationStream(Ego4D, StreamMixIn):
         if os.path.exists(anno_path):
             narration_streams = json.load(open(anno_path))
         else:
-            for video_uid in tqdm.tqdm(split_video_uids, desc=f'prepare {anno_path}...'):
-                if video_uid not in split_video_uids:
-                    continue
-                anno = annos[video_uid]
-                # 1. sort & clean narration text
-                narrations = []
-                for ns in anno['narrations']:
-                    text = Ego4DNarrationStream._clean_text(ns['text'])
-                    if len(text.split(' ')) >= 2: # at least, C verb.
-                        narrations.append({
-                            'time': ns['time'],
-                            'text': text,
-                            '_annotation_uid': ns['_annotation_uid']
-                        })
-                narrations = sorted(narrations, key=lambda x:x['time'])
-                # 2. match narration with summary
-                _annotation_uid_narrations = collections.defaultdict(list)
-                for narration in narrations:
-                    _annotation_uid_narrations[narration.pop('_annotation_uid')].append(narration)
-                narration_streams[video_uid] = _annotation_uid_narrations
+            narration_streams = self._build_narration_streams(
+                annos=annos,
+                video_uids=set(split_video_uids),
+                desc=f'prepare {anno_path}...',
+            )
             json.dump(narration_streams, open(anno_path, 'w'), indent=4)
         return narration_streams
 
-    def __init__(self, *, split: str, frame_fps: int, is_training: bool, augmentation: bool, **kwargs):
+    @staticmethod
+    def _build_narration_streams(annos: dict, video_uids: set[str], desc: str):
+        narration_streams = {}
+        for video_uid in tqdm.tqdm(sorted(video_uids), desc=desc):
+            if video_uid not in annos:
+                continue
+            anno = annos[video_uid]
+            # 1. sort & clean narration text
+            narrations = []
+            for ns in anno['narrations']:
+                text = Ego4DNarrationStream._clean_text(ns['text'])
+                if len(text.split(' ')) >= 2: # at least, C verb.
+                    narrations.append({
+                        'time': ns['time'],
+                        'text': text,
+                        '_annotation_uid': ns['_annotation_uid']
+                    })
+            narrations = sorted(narrations, key=lambda x:x['time'])
+            # 2. match narration with summary
+            _annotation_uid_narrations = collections.defaultdict(list)
+            for narration in narrations:
+                _annotation_uid_narrations[narration.pop('_annotation_uid')].append(narration)
+            narration_streams[video_uid] = _annotation_uid_narrations
+        return narration_streams
+
+    @staticmethod
+    def _load_video_uids(path: str):
+        if not path:
+            return None
+        with open(path) as fp:
+            return {line.strip() for line in fp if line.strip()}
+
+    def __init__(self, *, split: str, frame_fps: int, is_training: bool, augmentation: bool,
+                 ego4d_train_video_uid_file: str = None, ego4d_val_video_uid_file: str = None, **kwargs):
         super().__init__(split=split, frame_fps=frame_fps, augmentation=augmentation, is_training=is_training, **kwargs)
         self.is_training = is_training
         self.frame_fps = frame_fps
 
-        annos = self.get_annos(split)
+        uid_file = ego4d_train_video_uid_file if split == 'train' else ego4d_val_video_uid_file
+        video_uids = self._load_video_uids(uid_file)
+        annos = self.get_annos(split, video_uids=video_uids)
         self.annos = []
         for video_uid, _annotation_uid_narrations in tqdm.tqdm(annos.items(), desc=f'narration_stream_{split}...'):
+            if video_uid not in self.metadata:
+                print(f'skip {video_uid}: encoded feature is missing')
+                continue
             duration = self.metadata[video_uid]['duration']
             for narrations in _annotation_uid_narrations.values():
                 if not narrations:
@@ -158,11 +187,18 @@ class Ego4DRefinedNarrationStream(Ego4DNarrationStream):
         {"role": "user", "content": "What is the action now? Please response in short."},
     ]
 
-    def get_annos(self, split: str) -> dict:
-        anno_path = os.path.join(Ego4D.anno_root, f'refined_narration_stream_{split}.json')
+    def get_annos(self, split: str, video_uids: set[str] = None) -> dict:
+        anno_file = getattr(self, 'refined_annotation_file', None)
+        anno_path = anno_file or os.path.join(Ego4D.anno_root, f'refined_narration_stream_{split}.json')
         assert os.path.exists(anno_path)
         narration_streams = json.load(open(anno_path))
+        if video_uids is not None:
+            narration_streams = {video_uid: narration_streams[video_uid] for video_uid in video_uids if video_uid in narration_streams}
         return narration_streams
+
+    def __init__(self, *, split: str, ego4d_train_annotation_file: str = None, ego4d_val_annotation_file: str = None, **kwargs):
+        self.refined_annotation_file = ego4d_train_annotation_file if split == 'train' else ego4d_val_annotation_file
+        super().__init__(split=split, **kwargs)
 
 def build_ego4d_refined_narration_stream_train(**kwargs):
     return Ego4DRefinedNarrationStream(split='train', **kwargs)

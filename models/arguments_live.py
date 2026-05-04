@@ -26,6 +26,12 @@ class LiveTrainingArguments(TrainingArguments):
     augmentation: bool = False
     attn_implementation: str = 'sdpa'
     output_dir: str = 'outputs/debug'
+    demo_overfit_feature_dir: str = 'outputs/demo_overfit/features'
+    ego4d_train_video_uid_file: str = None
+    ego4d_val_video_uid_file: str = None
+    ego4d_feature_dir: str = None
+    ego4d_train_annotation_file: str = None
+    ego4d_val_annotation_file: str = None
 
 @dataclass
 class LiveOneTrainingArguments(LiveTrainingArguments):

@@ -12,9 +12,9 @@ def data_collator(batch: list[list], *, tokenizer: PreTrainedTokenizer, **kwargs
         batch_text, batch_labels, batch.input_ids, batch.offset_mapping, batch_learn_ranges
     ):
         for learn_r in learn_range:
-            start = torch.nonzero(offset_mapping[:,0] == learn_r.start).item()
+            start = torch.nonzero(offset_mapping[:,0] == learn_r.start).flatten()[0].item()
             if offset_mapping[:,0][-1] >= learn_r.stop:
-                stop = torch.nonzero(offset_mapping[:,0] == learn_r.stop).item()
+                stop = torch.nonzero(offset_mapping[:,0] == learn_r.stop).flatten()[0].item()
             else: # the last eos token
                 stop = len(input_ids)
             labels[start-1:stop-1] = input_ids[start:stop]

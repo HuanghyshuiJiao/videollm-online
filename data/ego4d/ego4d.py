@@ -4,9 +4,9 @@ class Ego4D:
     root = 'datasets/ego4d/v2'
     video_root = os.path.join(root, 'full_scale')
     anno_root = os.path.join(root, 'annotations')
-    def __init__(self, vision_pretrained: str, embed_mark: str, frame_fps: int, **kwargs):
+    def __init__(self, vision_pretrained: str, embed_mark: str, frame_fps: int, ego4d_feature_dir: str = None, **kwargs):
         super().__init__(**kwargs)
-        self.embed_dir = f"{self.video_root}_{embed_mark}_{vision_pretrained.replace('/', '--')}"
+        self.embed_dir = ego4d_feature_dir or f"{self.video_root}_{embed_mark}_{vision_pretrained.replace('/', '--')}"
         self.frame_fps = frame_fps
         self.metadata = self.get_metadata()
         self.annos: list[dict]

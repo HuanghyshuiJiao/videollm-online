@@ -9,10 +9,10 @@ TRAINER_STATE = Path("outputs/sanity/tinyllama_ego4d_subset/checkpoint-200/train
 SELECTED_VIDEOS = Path("outputs/ego4d_subset/selected_videos.json")
 
 VAL_METRICS = {
-    "lm_ppl": 5.560096263885498,
-    "time_diff_sec": 2.8853671550750732,
+    "lm_ppl": 5.534855842590332,
+    "time_diff_sec": 2.8853673934936523,
     "fluency": 0.09538281708955765,
-    "lm_correctness": 0.40819546580314636,
+    "lm_correctness": 0.4070632755756378,
     "val_samples": 13,
 }
 
